@@ -1,0 +1,1461 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ice Climber - Endless Mode</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a1a;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            font-family: 'Press Start 2P', monospace;
+            overflow: hidden;
+        }
+
+        /* ---- Main layout: game + side panel ---- */
+        .main-container {
+            display: flex;
+            flex-direction: row;
+            gap: 0;
+            align-items: stretch;
+        }
+
+        .game-wrapper {
+            position: relative;
+            border: 4px solid #333;
+            border-radius: 8px 0 0 8px;
+            box-shadow: 0 0 30px rgba(0, 150, 255, 0.3), 0 0 60px rgba(0, 100, 200, 0.15),
+                inset 0 0 20px rgba(0, 0, 0, 0.5);
+            flex-shrink: 0;
+        }
+
+        canvas {
+            display: block;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+
+        .scanlines {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            border-radius: 6px 0 0 6px;
+            background: repeating-linear-gradient(0deg, transparent, transparent 2px,
+                    rgba(0, 0, 0, 0.08) 2px, rgba(0, 0, 0, 0.08) 4px);
+        }
+
+        /* ---- HUD bar ---- */
+        .hud-bar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            padding: 6px 10px;
+            z-index: 5;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: linear-gradient(180deg, rgba(0, 0, 0, 0.85) 0%, rgba(0, 0, 0, 0) 100%);
+            pointer-events: none;
+        }
+
+        .hud-bar .hud-item {
+            color: #fff;
+            font-size: 9px;
+            text-shadow: 1px 1px 0 #000;
+        }
+
+        .hud-bar .hud-item span {
+            color: #fc6;
+        }
+
+        .hud-bar .hud-score span {
+            color: #6f6;
+        }
+
+        .hud-bar .hud-best span {
+            color: #f66;
+        }
+
+        .bottom-hud {
+            color: #666;
+            font-size: 9px;
+            margin-top: 10px;
+            text-align: center;
+            letter-spacing: 1px;
+        }
+
+        .bottom-hud span {
+            color: #6cf;
+        }
+
+        /* ---- Loading screen ---- */
+        #loadingScreen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 20;
+            border-radius: 6px;
+        }
+
+        #loadingScreen .loading-text {
+            color: #4cf;
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
+
+        #loadingScreen .loading-bar-bg {
+            width: 200px;
+            height: 16px;
+            border: 2px solid #4cf;
+            border-radius: 4px;
+        }
+
+        #loadingScreen .loading-bar {
+            height: 100%;
+            width: 0%;
+            background: #4cf;
+            border-radius: 2px;
+            transition: width 0.2s;
+        }
+
+        /* ---- Game Over overlay ---- */
+        #gameOverScreen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 15;
+            border-radius: 6px;
+            transition: background 1s;
+        }
+
+        #gameOverScreen.active {
+            display: flex;
+            background: rgba(0, 0, 0, 0.88);
+        }
+
+        #gameOverScreen h1 {
+            color: #f44;
+            font-size: 24px;
+            margin-bottom: 16px;
+            text-shadow: 0 0 20px #f44, 0 2px 0 #800;
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        #gameOverScreen .go-stats {
+            color: #fff;
+            font-size: 10px;
+            line-height: 2.5;
+            text-align: center;
+        }
+
+        #gameOverScreen .go-stats .val {
+            color: #fc6;
+        }
+
+        #gameOverScreen .go-stats .best {
+            color: #f66;
+        }
+
+        #gameOverScreen .go-restart {
+            color: #6f6;
+            font-size: 11px;
+            margin-top: 30px;
+            animation: blink 1s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                transform: scale(1)
+            }
+
+            50% {
+                transform: scale(1.05)
+            }
+        }
+
+        @keyframes blink {
+
+            0%,
+            100% {
+                opacity: 1
+            }
+
+            50% {
+                opacity: 0.3
+            }
+        }
+
+        /* ===========================================================
+           SIDE PANEL — Leaderboard + Chat (right of game)
+           =========================================================== */
+        .side-panel {
+            width: 512px;
+            height: 488px;
+            /* match game wrapper height (480 + 8 border) */
+            display: flex;
+            flex-direction: column;
+            background: #0d1117;
+            border: 4px solid #333;
+            border-left: 2px solid #444;
+            border-radius: 0 8px 8px 0;
+            overflow: hidden;
+            box-shadow: 0 0 30px rgba(0, 150, 255, 0.15);
+        }
+
+        /* ---- Panel Header ---- */
+        .panel-header {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            padding: 10px 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border-bottom: 2px solid #333;
+            flex-shrink: 0;
+        }
+
+        .panel-header .panel-icon {
+            font-size: 14px;
+        }
+
+        .panel-header .panel-title {
+            color: #4cf;
+            font-size: 10px;
+            letter-spacing: 1px;
+        }
+
+        .panel-header .online-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #4f4;
+            margin-left: auto;
+            box-shadow: 0 0 6px #4f4;
+            animation: dotPulse 2s ease-in-out infinite;
+        }
+
+        .panel-header .online-count {
+            color: #888;
+            font-size: 8px;
+        }
+
+        @keyframes dotPulse {
+
+            0%,
+            100% {
+                opacity: 1;
+                transform: scale(1)
+            }
+
+            50% {
+                opacity: 0.6;
+                transform: scale(0.8)
+            }
+        }
+
+        /* ---- Leaderboard section ---- */
+        .leaderboard {
+            flex: 0 0 auto;
+            max-height: 45%;
+            display: flex;
+            flex-direction: column;
+            border-bottom: 2px solid #333;
+        }
+
+        .lb-title {
+            background: linear-gradient(90deg, rgba(255, 204, 102, 0.15) 0%, transparent 100%);
+            padding: 8px 14px;
+            color: #fc6;
+            font-size: 9px;
+            letter-spacing: 1px;
+            border-bottom: 1px solid #2a2a3a;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-shrink: 0;
+        }
+
+        .lb-list {
+            overflow-y: auto;
+            flex: 1;
+            padding: 4px 0;
+        }
+
+        .lb-list::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .lb-list::-webkit-scrollbar-track {
+            background: #111;
+        }
+
+        .lb-list::-webkit-scrollbar-thumb {
+            background: #444;
+            border-radius: 2px;
+        }
+
+        .lb-row {
+            display: flex;
+            align-items: center;
+            padding: 6px 14px;
+            gap: 10px;
+            transition: background 0.2s;
+        }
+
+        .lb-row:hover {
+            background: rgba(255, 255, 255, 0.04);
+        }
+
+        .lb-row.self {
+            background: rgba(100, 200, 255, 0.08);
+        }
+
+        .lb-rank {
+            width: 24px;
+            text-align: center;
+            font-size: 9px;
+            flex-shrink: 0;
+        }
+
+        .lb-rank.gold {
+            color: #fc6;
+        }
+
+        .lb-rank.silver {
+            color: #ccc;
+        }
+
+        .lb-rank.bronze {
+            color: #c84;
+        }
+
+        .lb-rank.normal {
+            color: #666;
+        }
+
+        .lb-avatar {
+            width: 22px;
+            height: 22px;
+            border-radius: 4px;
+            background: #2a2a3a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            flex-shrink: 0;
+        }
+
+        .lb-name {
+            color: #ddd;
+            font-size: 8px;
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .lb-name.you {
+            color: #6cf;
+        }
+
+        .lb-floor {
+            color: #6f6;
+            font-size: 8px;
+            flex-shrink: 0;
+        }
+
+        .lb-score {
+            color: #fc6;
+            font-size: 8px;
+            flex-shrink: 0;
+            width: 60px;
+            text-align: right;
+        }
+
+        /* ---- Chat section ---- */
+        .chat-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+
+        .chat-title {
+            background: linear-gradient(90deg, rgba(100, 200, 255, 0.1) 0%, transparent 100%);
+            padding: 8px 14px;
+            color: #6cf;
+            font-size: 9px;
+            letter-spacing: 1px;
+            border-bottom: 1px solid #2a2a3a;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-shrink: 0;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            min-height: 0;
+        }
+
+        .chat-messages::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .chat-messages::-webkit-scrollbar-track {
+            background: #111;
+        }
+
+        .chat-messages::-webkit-scrollbar-thumb {
+            background: #444;
+            border-radius: 2px;
+        }
+
+        .chat-msg {
+            display: flex;
+            gap: 8px;
+            align-items: flex-start;
+            animation: msgFadeIn 0.3s ease;
+        }
+
+        @keyframes msgFadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(6px)
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0)
+            }
+        }
+
+        .chat-msg .msg-avatar {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+            background: #2a2a3a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+
+        .chat-msg .msg-body {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .chat-msg .msg-header {
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+            margin-bottom: 2px;
+        }
+
+        .chat-msg .msg-name {
+            color: #6cf;
+            font-size: 7px;
+        }
+
+        .chat-msg .msg-time {
+            color: #555;
+            font-size: 7px;
+        }
+
+        .chat-msg .msg-text {
+            color: #bbb;
+            font-size: 8px;
+            line-height: 1.6;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+        }
+
+        .chat-msg.system .msg-text {
+            color: #888;
+            font-style: italic;
+        }
+
+        .chat-msg.system .msg-name {
+            color: #fc6;
+        }
+
+        /* Chat input */
+        .chat-input-area {
+            display: flex;
+            gap: 0;
+            border-top: 2px solid #333;
+            flex-shrink: 0;
+        }
+
+        .chat-input {
+            flex: 1;
+            background: #111;
+            border: none;
+            outline: none;
+            color: #ddd;
+            font-family: 'Press Start 2P', monospace;
+            font-size: 8px;
+            padding: 10px 12px;
+        }
+
+        .chat-input::placeholder {
+            color: #444;
+        }
+
+        .chat-send-btn {
+            background: linear-gradient(135deg, #1a6dd4 0%, #1452a8 100%);
+            border: none;
+            color: #fff;
+            font-family: 'Press Start 2P', monospace;
+            font-size: 8px;
+            padding: 10px 14px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .chat-send-btn:hover {
+            background: linear-gradient(135deg, #2080f0 0%, #1a6dd4 100%);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="main-container">
+        <!-- Game area -->
+        <div class="game-wrapper">
+            <canvas id="gameCanvas" width="512" height="480"></canvas>
+            <div class="scanlines"></div>
+            <div class="hud-bar">
+                <div class="hud-item hud-score">SCORE: <span id="hudScore">0</span></div>
+                <div class="hud-item">FLOOR: <span id="hudFloor">START</span></div>
+                <div class="hud-item hud-best">BEST: <span id="hudBest">0</span></div>
+            </div>
+            <div id="loadingScreen">
+                <div class="loading-text">LOADING ASSETS...</div>
+                <div class="loading-bar-bg">
+                    <div class="loading-bar" id="loadingBar"></div>
+                </div>
+            </div>
+            <div id="gameOverScreen">
+                <h1>GAME OVER</h1>
+                <div class="go-stats">
+                    FLOOR: <span class="val" id="goFloor">0</span><br>
+                    SCORE: <span class="val" id="goScore">0</span><br>
+                    BRICKS: <span class="val" id="goBricks">0</span><br>
+                    BEST: <span class="best" id="goBest">0</span>
+                </div>
+                <div class="go-restart">NHẤN ENTER ĐỂ CHƠI LẠI</div>
+            </div>
+        </div>
+
+        <!-- Side panel: Leaderboard + Chat -->
+        <div class="side-panel">
+            <!-- Header -->
+            <div class="panel-header">
+                <span class="panel-icon">🏔️</span>
+                <span class="panel-title">ICE CLIMBER ONLINE</span>
+                <span class="online-dot"></span>
+                <span class="online-count" id="onlineCount">1 online</span>
+            </div>
+
+            <!-- Leaderboard -->
+            <div class="leaderboard">
+                <div class="lb-title">🏆 BẢNG XẾP HẠNG</div>
+                <div class="lb-list" id="lbList"></div>
+            </div>
+
+            <!-- Chat -->
+            <div class="chat-section">
+                <div class="chat-title">💬 CHAT NHÓM</div>
+                <div class="chat-messages" id="chatMessages"></div>
+                <div class="chat-input-area">
+                    <input type="text" class="chat-input" id="chatInput" placeholder="Nhập tin nhắn..." maxlength="100"
+                        autocomplete="off">
+                    <button class="chat-send-btn" id="chatSendBtn">GỬI</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="bottom-hud">
+        <span>←→</span> Move &nbsp; <span>X/Space</span> Jump &nbsp; ENDLESS MODE
+    </div>
+
+    <script>
+        // ============================================================
+        //  ICE CLIMBER — ENDLESS MODE (HTML5 Canvas)
+        // ============================================================
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const loadingScreen = document.getElementById('loadingScreen');
+        const loadingBar = document.getElementById('loadingBar');
+        const gameOverScreen = document.getElementById('gameOverScreen');
+
+        // HUD elements
+        const hudScore = document.getElementById('hudScore');
+        const hudFloor = document.getElementById('hudFloor');
+        const hudBest = document.getElementById('hudBest');
+        const goFloor = document.getElementById('goFloor');
+        const goScore = document.getElementById('goScore');
+        const goBricks = document.getElementById('goBricks');
+        const goBest = document.getElementById('goBest');
+
+        const ASSET_BASE = './assets';
+        const SPRITE_PATH = ASSET_BASE + '/sprites';
+        const AUDIO_PATH = ASSET_BASE + '/audio';
+
+        // ---- Constants ----
+        const SCREEN_W = 512, SCREEN_H = 480;
+        const PLAYER_SPEED = 3, GRAVITY = 0.5, JUMP_FORCE = -10.5;
+        const BRICK_W = 16, BRICK_H = 16;
+        const FLOOR_SPACING = 90;
+        const PLAYER_W = 30, PLAYER_H = 46;
+        const FOOT_OFFSET = 5;
+
+        const SEASON_NAMES = ['spring', 'summer', 'autumn', 'winter'];
+        function getFloorSeason(floorNum) {
+            return SEASON_NAMES[((floorNum - 1) % 40) >= 0
+                ? Math.min(Math.floor(((floorNum - 1) % 40) / 10), 3) : 0];
+        }
+
+        const SEASON_TINTS = {
+            spring: { breakable: [200, 140, 200, 100], unbreakable: [180, 100, 180, 120] },
+            summer: { breakable: [200, 200, 0, 100], unbreakable: [160, 180, 0, 120] },
+            autumn: { breakable: [220, 100, 0, 120], unbreakable: [180, 60, 0, 140] },
+            winter: { breakable: [100, 180, 255, 120], unbreakable: [60, 140, 240, 140] },
+        };
+
+        // ============================================================
+        //  ASSET LOADING
+        // ============================================================
+        const images = {}, sounds = {}, sprites = {};
+
+        function loadImage(name, src) {
+            return new Promise(resolve => {
+                const img = new Image();
+                img.onload = () => { images[name] = img; resolve(); };
+                img.onerror = () => { console.warn('Failed:', src); resolve(); };
+                img.src = src;
+            });
+        }
+        function loadSound(name, src) {
+            return new Promise(resolve => {
+                const audio = new Audio();
+                audio.oncanplaythrough = () => { sounds[name] = audio; resolve(); };
+                audio.onerror = () => { console.warn('Failed:', src); resolve(); };
+                audio.src = src; audio.load();
+            });
+        }
+        function playSound(name) {
+            if (sounds[name]) { const s = sounds[name].cloneNode(); s.volume = 0.5; s.play().catch(() => { }); }
+        }
+        function playSoundLoop(name) {
+            if (sounds[name]) { sounds[name].loop = true; sounds[name].volume = 0.3; sounds[name].play().catch(() => { }); }
+        }
+        function stopSound(name) {
+            if (sounds[name]) { sounds[name].pause(); sounds[name].currentTime = 0; }
+        }
+
+        function clipSprite(sheetImg, sx, sy, sw, sh, dw, dh) {
+            const c = document.createElement('canvas'); c.width = dw; c.height = dh;
+            const cx = c.getContext('2d'); cx.imageSmoothingEnabled = false;
+            cx.drawImage(sheetImg, sx, sy, sw, sh, 0, 0, dw, dh); return c;
+        }
+        function flipCanvas(srcCanvas) {
+            const c = document.createElement('canvas'); c.width = srcCanvas.width; c.height = srcCanvas.height;
+            const cx = c.getContext('2d'); cx.imageSmoothingEnabled = false;
+            cx.translate(c.width, 0); cx.scale(-1, 1); cx.drawImage(srcCanvas, 0, 0); return c;
+        }
+        function tintCanvas(srcCanvas, r, g, b, a) {
+            const c = document.createElement('canvas'); c.width = srcCanvas.width; c.height = srcCanvas.height;
+            const cx = c.getContext('2d'); cx.imageSmoothingEnabled = false;
+            cx.drawImage(srcCanvas, 0, 0);
+            cx.globalCompositeOperation = 'source-atop';
+            cx.fillStyle = `rgba(${r},${g},${b},${a / 255})`; cx.fillRect(0, 0, c.width, c.height);
+            return c;
+        }
+
+        function buildSprites() {
+            const sheet = images['spriteSheet'];
+            sprites.player_right = [
+                clipSprite(sheet, 4, 22, 14, 23, PLAYER_W, PLAYER_H),
+                clipSprite(sheet, 19, 22, 14, 23, PLAYER_W, PLAYER_H),
+                clipSprite(sheet, 35, 21, 13, 19, 29, 42),
+                clipSprite(sheet, 53, 21, 16, 19, 32, 42),
+            ];
+            sprites.jump_right = [
+                clipSprite(sheet, 83, 49, 20, 20, 39, PLAYER_H),
+                clipSprite(sheet, 109, 46, 15, 24, 33, 50),
+            ];
+            sprites.player_left = sprites.player_right.map(flipCanvas);
+            sprites.jump_left = sprites.jump_right.map(flipCanvas);
+            sprites.green_full_brick = clipSprite(sheet, 6, 160, 9, 8, BRICK_W, BRICK_H);
+            // Breakable bricks: tinted from green base
+            for (const season of SEASON_NAMES) {
+                const [r, g, b, a] = SEASON_TINTS[season].breakable;
+                sprites[`brick_${season}_breakable`] = tintCanvas(sprites.green_full_brick, r, g, b, a);
+            }
+            // Unbreakable bricks: dedicated sprites from spritesheet (right side, bottom)
+            sprites.brick_spring_unbreakable = clipSprite(sheet, 158, 184, 8, 8, BRICK_W, BRICK_H);
+            sprites.brick_summer_unbreakable = clipSprite(sheet, 167, 184, 8, 8, BRICK_W, BRICK_H);
+            sprites.brick_autumn_unbreakable = clipSprite(sheet, 158, 174, 8, 8, BRICK_W, BRICK_H);
+            sprites.brick_winter_unbreakable = clipSprite(sheet, 158, 164, 8, 8, BRICK_W, BRICK_H);
+            // Cloud sprites
+            sprites.cloud_small = clipSprite(sheet, 125, 177, 6, 7, 12, 14);
+            sprites.cloud_big = clipSprite(sheet, 132, 177, 7, 7, 14, 14);
+            if (images['water_tile']) {
+                const c = document.createElement('canvas'); c.width = BRICK_W; c.height = BRICK_W;
+                const cx = c.getContext('2d'); cx.imageSmoothingEnabled = false;
+                cx.drawImage(images['water_tile'], 0, 0, BRICK_W, BRICK_W); sprites.water = c;
+            }
+        }
+
+        async function loadAllAssets() {
+            const imageList = [
+                ['main_menu', SPRITE_PATH + '/MainMenu.png'], ['level', SPRITE_PATH + '/Level.png'],
+                ['hammer', SPRITE_PATH + '/Hammer.png'], ['spriteSheet', SPRITE_PATH + '/SpriteSheetTweaked.png'],
+                ['school', SPRITE_PATH + '/school.png'], ['bee_hero', SPRITE_PATH + '/bee.png'],
+                ['water_tile', SPRITE_PATH + '/water_tile.png'],
+                ['side_wall_spring', SPRITE_PATH + '/side_wall_spring.png'],
+                ['side_wall_summer', SPRITE_PATH + '/side_wall_summer.png'],
+                ['side_wall_autumn', SPRITE_PATH + '/side_wall_autumn.png'],
+                ['side_wall_winter', SPRITE_PATH + '/side_wall_winter.png'],
+            ];
+            const soundList = [
+                ['main_menu', AUDIO_PATH + '/MainMenu.wav'], ['show_level', AUDIO_PATH + '/ShowLevel.wav'],
+                ['background', AUDIO_PATH + '/Background.wav'], ['jump', AUDIO_PATH + '/Jump.wav'],
+                ['break_brick', AUDIO_PATH + '/BreakBrick.wav'], ['game_over', AUDIO_PATH + '/GameOver.wav'],
+            ];
+            const total = imageList.length + soundList.length;
+            let loaded = 0;
+            const updateBar = () => { loaded++; loadingBar.style.width = Math.floor((loaded / total) * 100) + '%'; };
+            for (const [name, src] of imageList) { await loadImage(name, src); updateBar(); }
+            for (const [name, src] of soundList) { await loadSound(name, src); updateBar(); }
+            buildSprites();
+        }
+
+        // ============================================================
+        //  ENDLESS FLOOR SYSTEM
+        // ============================================================
+        function getFloorY(floorNum) {
+            const baseY = 448;
+            if (floorNum === 1) return baseY;
+            return baseY - FLOOR_SPACING * 2 - (floorNum - 2) * FLOOR_SPACING;
+        }
+
+        function rectsCollide(r1, r2) {
+            return r1.x < r2.x + r2.w && r1.x + r1.w > r2.x &&
+                r1.y < r2.y + r2.h && r1.y + r1.h > r2.y;
+        }
+
+        const segmentPatterns = [
+            [[96, 20]], [[96, 6], [256, 8]], [[96, 4], [224, 6], [400, 2]],
+            [[96, 10], [352, 4]], [[96, 6], [272, 8]],
+        ];
+
+        function getDifficulty(floorNum) {
+            const level = Math.floor(floorNum / 10);
+            return {
+                unbreakableChance: Math.min(0.03 * level, 0.4),
+                gapChance: Math.min(0.02 * level, 0.25),
+                minEdge: Math.min(4 + Math.floor(level / 3), 7),
+                maxEdge: Math.min(6 + Math.floor(level / 3), 9),
+                cloudChance: floorNum >= 5 ? Math.min(0.08 + 0.02 * level, 0.35) : 0,
+            };
+        }
+
+        class Brick {
+            constructor(x, y, breakable = true, decorative = false, season = 'spring') {
+                this.x = x; this.y = y; this.w = BRICK_W; this.h = BRICK_H;
+                this.alive = true; this.breakable = breakable;
+                this.decorative = decorative; this.season = season;
+            }
+            getRect() { return { x: this.x, y: this.y, w: this.w, h: this.h }; }
+            draw(camY) {
+                if (!this.alive) return;
+                const sy = this.y - camY;
+                if (sy < -this.h || sy > SCREEN_H + this.h) return;
+                const btype = this.breakable ? 'breakable' : 'unbreakable';
+                const s = sprites[`brick_${this.season}_${btype}`];
+                if (s) ctx.drawImage(s, this.x, sy);
+            }
+        }
+
+        class FallingBrick {
+            constructor(x, y) { this.x = x; this.y = y; this.vy = -4.0; this.vx = 0; this.alive = true; }
+            update() { this.vy += GRAVITY; this.y += this.vy; this.x += this.vx; if (this.y > 5000) this.alive = false; }
+            draw(camY) {
+                if (!this.alive) return;
+                const sy = this.y - camY;
+                if (sy < -20 || sy > SCREEN_H + 20) return;
+                if (sprites.green_full_brick) ctx.drawImage(sprites.green_full_brick, Math.floor(this.x), Math.floor(sy));
+            }
+        }
+
+        // ---- Cloud Platform ----
+        const CLOUD_SMALL_W = 12, CLOUD_BIG_W = 14, CLOUD_H = 14;
+        const CLOUD_GAP = 1;
+        class CloudPlatform {
+            constructor(y, numBig, direction, speed) {
+                this.y = y;
+                this.numBig = numBig; // 1-3 big clouds in middle
+                this.direction = direction; // 1 = right, -1 = left
+                this.speed = speed;
+                // Build layout: small + big*N + small
+                this.totalW = CLOUD_SMALL_W + CLOUD_GAP
+                    + numBig * (CLOUD_BIG_W + CLOUD_GAP)
+                    + CLOUD_SMALL_W;
+                this.x = direction > 0 ? -this.totalW : SCREEN_W;
+                this.alive = true;
+            }
+            getSegments() {
+                // Returns array of {x, y, w, h} for each cloud piece
+                const segs = [];
+                let cx = this.x;
+                // left small cloud
+                segs.push({ x: cx, y: this.y, w: CLOUD_SMALL_W, h: CLOUD_H, type: 'small' });
+                cx += CLOUD_SMALL_W + CLOUD_GAP;
+                // middle big clouds
+                for (let i = 0; i < this.numBig; i++) {
+                    segs.push({ x: cx, y: this.y, w: CLOUD_BIG_W, h: CLOUD_H, type: 'big' });
+                    cx += CLOUD_BIG_W + CLOUD_GAP;
+                }
+                // right small cloud
+                segs.push({ x: cx, y: this.y, w: CLOUD_SMALL_W, h: CLOUD_H, type: 'small' });
+                return segs;
+            }
+            getRect() {
+                return { x: this.x, y: this.y, w: this.totalW, h: CLOUD_H };
+            }
+            update() {
+                this.x += this.speed * this.direction;
+                // Wrap around screen
+                if (this.direction > 0 && this.x > SCREEN_W) this.x = -this.totalW;
+                if (this.direction < 0 && this.x + this.totalW < 0) this.x = SCREEN_W;
+            }
+            draw(camY) {
+                const sy = this.y - camY;
+                if (sy < -CLOUD_H || sy > SCREEN_H + CLOUD_H) return;
+                const segs = this.getSegments();
+                for (const seg of segs) {
+                    const spr = seg.type === 'small' ? sprites.cloud_small : sprites.cloud_big;
+                    if (spr) ctx.drawImage(spr, Math.floor(seg.x), Math.floor(sy));
+                }
+            }
+        }
+
+        function generateFloor(floorNum, bricks, floorEdges, cloudPlatforms) {
+            const floorTopY = getFloorY(floorNum);
+            const diff = getDifficulty(floorNum);
+            const leftEdge = diff.minEdge + Math.floor(Math.random() * (diff.maxEdge - diff.minEdge + 1));
+            const rightEdge = diff.minEdge + Math.floor(Math.random() * (diff.maxEdge - diff.minEdge + 1));
+            floorEdges[floorNum] = [leftEdge, rightEdge];
+            const season = getFloorSeason(floorNum);
+
+            // Side walls always present
+            for (let i = 0; i < leftEdge; i++)
+                bricks.push(new Brick(i * BRICK_W, floorTopY, false, false, season));
+            for (let i = 0; i < rightEdge; i++)
+                bricks.push(new Brick(SCREEN_W - (rightEdge - i) * BRICK_W, floorTopY, false, false, season));
+
+            // Cloud floor?
+            if (Math.random() < diff.cloudChance) {
+                const numClouds = 1 + Math.floor(Math.random() * 2); // 1-2 cloud platforms
+                for (let c = 0; c < numClouds; c++) {
+                    const numBig = 1 + Math.floor(Math.random() * 3); // 1-3 big clouds
+                    const dir = Math.random() < 0.5 ? 1 : -1;
+                    const speed = 0.5 + Math.random() * 0.8;
+                    const cloud = new CloudPlatform(floorTopY, numBig, dir, speed);
+                    // Offset starting x so multiple clouds are spread out
+                    cloud.x = Math.floor(Math.random() * SCREEN_W);
+                    cloudPlatforms.push(cloud);
+                }
+                return; // no bricks on cloud floors
+            }
+
+            const leftLimit = leftEdge * BRICK_W;
+            const rightLimit = SCREEN_W - rightEdge * BRICK_W;
+            const pattern = segmentPatterns[(floorNum - 1) % segmentPatterns.length];
+            for (const [startX, count] of pattern) {
+                if (Math.random() < diff.gapChance) continue;
+                for (let i = 0; i < count; i++) {
+                    const bx = startX + i * BRICK_W;
+                    if (bx >= leftLimit && bx + BRICK_W <= rightLimit) {
+                        const isUnbreakable = Math.random() < diff.unbreakableChance;
+                        bricks.push(new Brick(bx, floorTopY, !isUnbreakable, false, season));
+                        if (Math.random() < 0.5)
+                            bricks.push(new Brick(bx, floorTopY + BRICK_H, true, true, season));
+                    }
+                }
+            }
+        }
+
+        const INITIAL_FLOORS = 15;
+        let highestGeneratedFloor = 0;
+        let lowestAliveFloor = 1;
+
+        function createInitialPlatforms() {
+            const bricks = [];
+            const floorEdges = {};
+            const cloudPlatforms = [];
+            const floor1Y = getFloorY(1);
+            const season1 = getFloorSeason(1);
+            floorEdges[1] = [0, 0];
+            let bx = 0;
+            while (bx + BRICK_W <= SCREEN_W) { bricks.push(new Brick(bx, floor1Y, true, false, season1)); bx += BRICK_W; }
+            const floor2Y = getFloorY(2);
+            const midY = Math.floor((floor1Y + floor2Y) / 2);
+            for (let i = 0; i < 7; i++) bricks.push(new Brick(i * BRICK_W, midY, true, false, season1));
+            for (let f = 2; f <= INITIAL_FLOORS; f++) generateFloor(f, bricks, floorEdges, cloudPlatforms);
+            highestGeneratedFloor = INITIAL_FLOORS; lowestAliveFloor = 1;
+            return { bricks, floorEdges, cloudPlatforms };
+        }
+
+        function expandFloorsIfNeeded(playerFloor, bricks, floorEdges, cloudPlatforms) {
+            const target = playerFloor + 8;
+            while (highestGeneratedFloor < target) { highestGeneratedFloor++; generateFloor(highestGeneratedFloor, bricks, floorEdges, cloudPlatforms); }
+        }
+
+        function cleanupOldBricks(camY) {
+            const cutoff = camY + SCREEN_H + 400;
+            bricks = bricks.filter(b => b.y < cutoff);
+            fallingBricks = fallingBricks.filter(fb => fb.y < cutoff);
+            cloudPlatforms = cloudPlatforms.filter(cp => cp.y < cutoff);
+        }
+
+        // ============================================================
+        //  PLAYER
+        // ============================================================
+        class Player {
+            constructor(x, y) {
+                this.x = x; this.y = y; this.speed = PLAYER_SPEED;
+                this.vy = 0; this.on_ground = true;
+                this.is_right = true; this.walk_frame = 0; this.walk_timer = 0;
+                this.dead = false;
+            }
+            getHeadRect() { return { x: this.x + 4, y: this.y, w: PLAYER_W - 8, h: 8 }; }
+            getFeetRect() { return { x: this.x + 4, y: this.y + PLAYER_H - 6, w: PLAYER_W - 8, h: 6 }; }
+            jump() {
+                if (this.on_ground && !this.dead) { this.vy = JUMP_FORCE; this.on_ground = false; playSound('jump'); }
+            }
+            update(bricks, fallingBricks, camY, cloudPlatforms) {
+                if (this.dead) return;
+                this._onCloud = null;
+                if (!this.on_ground) this.vy += GRAVITY;
+                const oldY = this.y; this.y += this.vy;
+                this.checkBrickCollisions(bricks, oldY, fallingBricks);
+                this.checkCloudCollisions(cloudPlatforms, oldY);
+                // Move with cloud if standing on one
+                if (this._onCloud) this.x += this._onCloud.speed * this._onCloud.direction;
+                if (this.x + PLAYER_W < 0) this.x = SCREEN_W;
+                else if (this.x > SCREEN_W) this.x = -PLAYER_W;
+                if (this.y - camY > SCREEN_H + 50) this.dead = true;
+            }
+            checkBrickCollisions(bricks, oldY, fallingBricksArr) {
+                const headRect = this.getHeadRect();
+                const feetRect = this.getFeetRect();
+                for (const brick of bricks) {
+                    if (!brick.alive) continue;
+                    const br = brick.getRect();
+                    if (this.vy < 0 && rectsCollide(headRect, br)) {
+                        if (brick.breakable) {
+                            brick.alive = false; playSound('break_brick');
+                            score += 10; bricksBroken++;
+                            const fb = new FallingBrick(brick.x, brick.y);
+                            fb.vx = this.is_right ? 1.5 : -1.5;
+                            fallingBricksArr.push(fb);
+                        }
+                        this.vy = 1; this.y = brick.y + brick.h; return;
+                    }
+                    if (!brick.decorative && this.vy >= 0 && rectsCollide(feetRect, br)) {
+                        const oldBottom = oldY + PLAYER_H;
+                        if (oldBottom <= brick.y + 10) {
+                            this.y = brick.y - PLAYER_H + FOOT_OFFSET;
+                            this.vy = 0; this.on_ground = true; return;
+                        }
+                    }
+                }
+                const feetCheck = { x: this.x + 4, y: this.y + PLAYER_H, w: PLAYER_W - 8, h: 4 };
+                let onAny = false;
+                for (const brick of bricks) {
+                    if (brick.alive && rectsCollide(feetCheck, brick.getRect())) { onAny = true; break; }
+                }
+                if (!onAny && this.vy === 0 && !this._onCloud) this.on_ground = false;
+            }
+            checkCloudCollisions(cloudPlatforms, oldY) {
+                if (!cloudPlatforms) return;
+                const headRect = this.getHeadRect();
+                const feetRect = this.getFeetRect();
+                for (const cloud of cloudPlatforms) {
+                    const cr = cloud.getRect();
+                    // Head collision (jumping up into cloud) — block
+                    if (this.vy < 0 && rectsCollide(headRect, cr)) {
+                        this.vy = 1;
+                        this.y = cr.y + cr.h;
+                        return;
+                    }
+                    // Feet collision (landing on cloud)
+                    if (this.vy >= 0 && rectsCollide(feetRect, cr)) {
+                        const oldBottom = oldY + PLAYER_H;
+                        if (oldBottom <= cr.y + 10) {
+                            this.y = cr.y - PLAYER_H + FOOT_OFFSET;
+                            this.vy = 0;
+                            this.on_ground = true;
+                            this._onCloud = cloud;
+                            return;
+                        }
+                    }
+                }
+                // Check if still standing on a cloud
+                if (this.vy === 0 && this.on_ground) {
+                    const feetCheck = { x: this.x + 4, y: this.y + PLAYER_H, w: PLAYER_W - 8, h: 6 };
+                    for (const cloud of cloudPlatforms) {
+                        if (rectsCollide(feetCheck, cloud.getRect())) {
+                            this._onCloud = cloud;
+                            return;
+                        }
+                    }
+                }
+            }
+            getSprite() {
+                if (!this.on_ground) {
+                    const idx = this.vy < 0 ? 0 : 1;
+                    return this.is_right ? sprites.jump_right[idx] : sprites.jump_left[idx];
+                }
+                return this.is_right ? sprites.player_right[this.walk_frame] : sprites.player_left[this.walk_frame];
+            }
+            draw(camY) {
+                const s = this.getSprite();
+                if (s) ctx.drawImage(s, Math.floor(this.x), Math.floor(this.y - camY));
+            }
+        }
+
+        // ============================================================
+        //  CAMERA
+        // ============================================================
+        class Camera {
+            constructor() { this.baseFloor = 1; this.y = this._getTargetY(); this.targetY = this.y; }
+            _getTargetY() { return getFloorY(this.baseFloor) + BRICK_H - SCREEN_H + 20; }
+            update(player) {
+                const playerFeetY = player.y + PLAYER_H;
+                let playerFloor = 0;
+                for (let f = highestGeneratedFloor; f >= 1; f--) {
+                    if (playerFeetY <= getFloorY(f) + 15) { playerFloor = f; break; }
+                }
+                if (playerFloor > 1 && playerFloor - 1 > currentFloor) {
+                    const floorsClimbed = (playerFloor - 1) - currentFloor;
+                    score += floorsClimbed * 5;
+                    currentFloor = playerFloor - 1;
+                    updateLeaderboardSelf(); // update leaderboard when climbing
+                }
+                const visibleFloor = playerFloor - this.baseFloor + 1;
+                if (visibleFloor >= 4 && this.baseFloor < playerFloor - 2) {
+                    this.baseFloor = playerFloor - 2;
+                    this.targetY = this._getTargetY();
+                }
+                const diff = this.targetY - this.y;
+                if (Math.abs(diff) > 0.5) this.y += diff * 0.08;
+                else this.y = this.targetY;
+                hudFloor.textContent = currentFloor || 'START';
+                hudScore.textContent = score;
+            }
+        }
+
+        // ============================================================
+        //  DRAWING
+        // ============================================================
+        function drawSideWalls(camY, floorEdges) {
+            for (let f = Math.max(2, lowestAliveFloor); f <= highestGeneratedFloor; f++) {
+                const season = getFloorSeason(f);
+                const wallImg = images[`side_wall_${season}`]; if (!wallImg) continue;
+                const [le, re] = floorEdges[f] || [4, 4];
+                const upperY = getFloorY(f + 1), lowerY = getFloorY(f);
+                const wh = lowerY - upperY; if (wh <= 0) continue;
+                const swt = upperY - camY;
+                if (swt > SCREEN_H + 10 || swt + wh < -10) continue;
+                ctx.drawImage(wallImg, 0, swt, le * BRICK_W, wh);
+                ctx.save(); ctx.translate(SCREEN_W, 0); ctx.scale(-1, 1);
+                ctx.drawImage(wallImg, 0, swt, re * BRICK_W, wh); ctx.restore();
+            }
+        }
+
+        let waterAnimOffset = 0;
+        function drawWater(camY) {
+            waterAnimOffset = (waterAnimOffset + 0.3) % BRICK_W;
+            const floor1Y = getFloorY(1), waterTop = floor1Y + BRICK_H;
+            const wt = sprites.water; if (!wt) return;
+            for (let row = 0; row < 6; row++) {
+                const wy = waterTop + row * BRICK_W, swy = wy - camY;
+                if (swy < -BRICK_W || swy > SCREEN_H + BRICK_W) continue;
+                const off = row % 2 === 0 ? Math.floor(waterAnimOffset) : -Math.floor(waterAnimOffset);
+                for (let col = -1; col < SCREEN_W / BRICK_W + 2; col++)
+                    ctx.drawImage(wt, col * BRICK_W + off, swy);
+            }
+        }
+
+        function drawSchool(camY) {
+            const si = images['school']; if (!si) return;
+            const f1y = getFloorY(1), ssy = f1y - si.height - camY, sx = (SCREEN_W - si.width) / 2;
+            if (ssy > SCREEN_H || ssy + si.height < 0) return;
+            ctx.drawImage(si, sx, ssy);
+            const hi = images['bee_hero'];
+            if (hi) {
+                const hh = Math.min(hi.height, Math.floor(si.height * 0.8));
+                const hw = Math.floor(hi.width * (hh / hi.height));
+                const hx = sx + si.width + 20, hsy = f1y - hh - camY;
+                if (hsy < SCREEN_H && hsy + hh > 0) ctx.drawImage(hi, hx, hsy, hw, hh);
+            }
+        }
+
+        function drawFloorLabels(camY, floorEdges) {
+            ctx.font = '16px "Press Start 2P", monospace';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+            for (let f = Math.max(2, lowestAliveFloor); f <= highestGeneratedFloor; f++) {
+                const fy = getFloorY(f), sy = fy - camY;
+                if (sy < -40 || sy > SCREEN_H + 40) continue;
+                const label = String(f - 1);
+                const [le, re] = floorEdges[f] || [4, 4];
+                const lx = (le * BRICK_W) / 2, rx = SCREEN_W - (re * BRICK_W) / 2;
+                const ly = sy - 20, tw = ctx.measureText(label).width + 8;
+                ctx.fillStyle = 'rgba(0,0,0,0.8)';
+                ctx.fillRect(lx - tw / 2, ly - 2, tw, 18);
+                ctx.fillRect(rx - tw / 2, ly - 2, tw, 18);
+                ctx.fillStyle = '#fff';
+                ctx.fillText(label, lx, ly); ctx.fillText(label, rx, ly);
+            }
+        }
+
+        function drawDifficultyBar() {
+            const diffLevel = Math.min(Math.floor(currentFloor / 10), 10);
+            const barW = 80, barH = 4, barX = (SCREEN_W - barW) / 2, barY = SCREEN_H - 10;
+            ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
+            const pct = diffLevel / 10;
+            const r = Math.floor(255 * pct), g = Math.floor(255 * (1 - pct));
+            ctx.fillStyle = `rgb(${r},${g},0)`;
+            ctx.fillRect(barX, barY, barW * pct, barH);
+        }
+
+        // ============================================================
+        //  GAME STATE
+        // ============================================================
+        let player, camera, bricks, fallingBricks, floorEdges, cloudPlatforms;
+        let keys = {};
+        let gamePhase = 'loading';
+        let score = 0, currentFloor = 0, bricksBroken = 0;
+        let bestScore = parseInt(localStorage.getItem('iceclimber_best') || '0');
+
+        function initGame() {
+            const result = createInitialPlatforms();
+            bricks = result.bricks; floorEdges = result.floorEdges;
+            cloudPlatforms = result.cloudPlatforms;
+            fallingBricks = [];
+            score = 0; currentFloor = 0; bricksBroken = 0;
+            const startY = getFloorY(1) - PLAYER_H + FOOT_OFFSET;
+            player = new Player(256, startY);
+            camera = new Camera();
+            hudBest.textContent = bestScore;
+        }
+
+        function gameOver() {
+            gamePhase = 'gameover';
+            stopSound('background'); playSound('game_over');
+            if (score > bestScore) {
+                bestScore = score;
+                localStorage.setItem('iceclimber_best', String(bestScore));
+            }
+            goFloor.textContent = currentFloor; goScore.textContent = score;
+            goBricks.textContent = bricksBroken; goBest.textContent = bestScore;
+            hudBest.textContent = bestScore;
+            updateLeaderboardSelf();
+            setTimeout(() => gameOverScreen.classList.add('active'), 300);
+        }
+
+        function restartGame() {
+            gameOverScreen.classList.remove('active');
+            highestGeneratedFloor = 0; lowestAliveFloor = 1;
+            initGame(); gamePhase = 'playing'; playSoundLoop('background');
+        }
+
+        function drawFrame() {
+            ctx.fillStyle = '#000'; ctx.fillRect(0, 0, SCREEN_W, SCREEN_H);
+            const camY = camera.y;
+            drawSideWalls(camY, floorEdges);
+            for (const brick of bricks) brick.draw(camY);
+            for (const cp of cloudPlatforms) cp.draw(camY);
+            drawSchool(camY);
+            drawFloorLabels(camY, floorEdges);
+            for (const fb of fallingBricks) fb.draw(camY);
+            drawWater(camY);
+            player.draw(camY);
+            drawDifficultyBar();
+        }
+
+        // ============================================================
+        //  GAME LOOP — capped at 60 FPS
+        // ============================================================
+        const TARGET_FPS = 60;
+        const FRAME_DURATION = 1000 / TARGET_FPS;
+        let lastFrameTime = 0;
+
+        function gameLoop(timestamp) {
+            const elapsed = timestamp - lastFrameTime;
+            if (elapsed < FRAME_DURATION) { requestAnimationFrame(gameLoop); return; }
+            lastFrameTime = timestamp - (elapsed % FRAME_DURATION);
+
+            if (gamePhase === 'playing') {
+                let moving = false;
+                if (keys['ArrowRight'] || keys['KeyD']) {
+                    player.x += player.speed; player.is_right = true; moving = true;
+                    player.walk_timer++;
+                    if (player.walk_timer >= 5) { player.walk_timer = 0; player.walk_frame = (player.walk_frame + 1) % 4; }
+                } else if (keys['ArrowLeft'] || keys['KeyA']) {
+                    player.x -= player.speed; player.is_right = false; moving = true;
+                    player.walk_timer++;
+                    if (player.walk_timer >= 5) { player.walk_timer = 0; player.walk_frame = (player.walk_frame + 1) % 4; }
+                }
+                if (!moving) { player.walk_frame = 0; player.walk_timer = 0; }
+
+                for (const cp of cloudPlatforms) cp.update();
+                player.update(bricks, fallingBricks, camera.y, cloudPlatforms);
+                camera.update(player);
+                expandFloorsIfNeeded(camera.baseFloor + 5, bricks, floorEdges, cloudPlatforms);
+                cleanupOldBricks(camera.y);
+                for (const fb of fallingBricks) fb.update();
+                fallingBricks = fallingBricks.filter(fb => fb.alive);
+                if (player.dead) gameOver();
+                drawFrame();
+            } else if (gamePhase === 'gameover') {
+                drawFrame();
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // ---- Input ----
+        document.addEventListener('keydown', (e) => {
+            keys[e.code] = true;
+            if (gamePhase === 'playing') {
+                if (e.code === 'KeyX' || e.code === 'Space') { e.preventDefault(); player.jump(); }
+            } else if (gamePhase === 'gameover') {
+                if (e.code === 'Enter' || e.code === 'Space') restartGame();
+            }
+        });
+        document.addEventListener('keyup', (e) => { keys[e.code] = false; });
+
+        // ============================================================
+        //  SIDE PANEL: LEADERBOARD + CHAT
+        // ============================================================
+
+        // ---- Player name ----
+        let myName = localStorage.getItem('iceclimber_name') || '';
+        if (!myName) {
+            myName = 'Player_' + Math.floor(Math.random() * 9000 + 1000);
+            localStorage.setItem('iceclimber_name', myName);
+        }
+
+        // ---- Leaderboard ----
+        const lbList = document.getElementById('lbList');
+        const AVATAR_EMOJIS = ['🐝', '🐧', '🦊', '🐸', '🐻', '🐼', '🐨', '🦁', '🐯', '🐵',
+            '🐲', '🦅', '🐺', '🐰', '🐮', '🐷', '🐔', '🦈', '🐙', '🦋'];
+
+        // Mock data for leaderboard (placeholder for future online integration)
+        let leaderboardData = [
+            { name: 'IceMaster99', floor: 87, score: 1250, avatar: '🐧', online: true },
+            { name: 'NinjaClimb', floor: 64, score: 980, avatar: '🦊', online: true },
+            { name: 'BeeHero', floor: 52, score: 820, avatar: '🐝', online: false },
+            { name: 'PixelKing', floor: 45, score: 710, avatar: '🐲', online: true },
+            { name: 'StarJumper', floor: 38, score: 620, avatar: '🦅', online: false },
+            { name: 'CoolBreeze', floor: 31, score: 530, avatar: '🐺', online: true },
+            { name: 'MarioFan', floor: 25, score: 420, avatar: '🐵', online: false },
+            { name: 'CloudWalk', floor: 18, score: 310, avatar: '🐼', online: false },
+            { name: myName, floor: 0, score: 0, avatar: '🐻', online: true, isSelf: true },
+        ];
+
+        function renderLeaderboard() {
+            // Sort by score descending
+            leaderboardData.sort((a, b) => b.score - a.score);
+            lbList.innerHTML = '';
+            leaderboardData.forEach((entry, i) => {
+                const rank = i + 1;
+                let rankClass = 'normal';
+                if (rank === 1) rankClass = 'gold';
+                else if (rank === 2) rankClass = 'silver';
+                else if (rank === 3) rankClass = 'bronze';
+
+                const row = document.createElement('div');
+                row.className = 'lb-row' + (entry.isSelf ? ' self' : '');
+                row.innerHTML = `
+            <span class="lb-rank ${rankClass}">#${rank}</span>
+            <span class="lb-avatar">${entry.avatar}</span>
+            <span class="lb-name ${entry.isSelf ? 'you' : ''}">${entry.name}${entry.isSelf ? ' (bạn)' : ''}</span>
+            <span class="lb-floor">F${entry.floor}</span>
+            <span class="lb-score">${entry.score}</span>
+        `;
+                lbList.appendChild(row);
+            });
+        }
+
+        function updateLeaderboardSelf() {
+            const self = leaderboardData.find(e => e.isSelf);
+            if (self) {
+                self.floor = currentFloor;
+                self.score = score;
+                self.name = myName;
+            }
+            renderLeaderboard();
+        }
+
+        // ---- Chat ----
+        const chatMessages = document.getElementById('chatMessages');
+        const chatInput = document.getElementById('chatInput');
+        const chatSendBtn = document.getElementById('chatSendBtn');
+
+        let chatLog = [];
+
+        function getTimeStr() {
+            const d = new Date();
+            return d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0');
+        }
+
+        function addChatMessage(name, text, avatar = '🐝', isSystem = false) {
+            chatLog.push({ name, text, avatar, isSystem, time: getTimeStr() });
+            // Keep max 50 messages
+            if (chatLog.length > 50) chatLog.shift();
+            renderChat();
+        }
+
+        function renderChat() {
+            chatMessages.innerHTML = '';
+            for (const msg of chatLog) {
+                const div = document.createElement('div');
+                div.className = 'chat-msg' + (msg.isSystem ? ' system' : '');
+                div.innerHTML = `
+            <span class="msg-avatar">${msg.avatar}</span>
+            <div class="msg-body">
+                <div class="msg-header">
+                    <span class="msg-name">${msg.name}</span>
+                    <span class="msg-time">${msg.time}</span>
+                </div>
+                <div class="msg-text">${escapeHtml(msg.text)}</div>
+            </div>
+        `;
+                chatMessages.appendChild(div);
+            }
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function sendChat() {
+            const text = chatInput.value.trim();
+            if (!text) return;
+            addChatMessage(myName, text, '🐻');
+            chatInput.value = '';
+            chatInput.focus();
+        }
+
+        chatSendBtn.addEventListener('click', sendChat);
+        chatInput.addEventListener('keydown', (e) => {
+            if (e.code === 'Enter') {
+                e.preventDefault();
+                e.stopPropagation();
+                sendChat();
+            }
+            // Prevent game controls while typing
+            e.stopPropagation();
+        });
+
+        // Initial system messages
+        function initChat() {
+            addChatMessage('🏔️ System', 'Chào mừng đến Ice Climber Online!', '🏔️', true);
+            addChatMessage('🏔️ System', 'Leo càng cao, điểm càng nhiều! Chúc may mắn!', '🏔️', true);
+        }
+
+        // Simulate other players chatting occasionally
+        const botMessages = [
+            ['IceMaster99', 'ai phá kỷ lục của tôi thử xem 😎', '🐧'],
+            ['NinjaClimb', 'floor 60 khó vãi 💀', '🦊'],
+            ['PixelKing', 'gg wp mọi người', '🐲'],
+            ['CoolBreeze', 'nhảy trúng gạch ko vỡ hoài 😤', '🐺'],
+            ['NinjaClimb', 'mùa đông khó nhất', '🦊'],
+            ['IceMaster99', 'mẹo: đừng phá hết gạch, để lại 1 ít để đứng', '🐧'],
+            ['PixelKing', 'vừa chết floor 43 😭', '🐲'],
+            ['CoolBreeze', 'ai online ko chơi cùng!', '🐺'],
+        ];
+        let botMsgIndex = 0;
+
+        function simulateBotChat() {
+            if (Math.random() < 0.3 && gamePhase === 'playing') {
+                const [name, text, avatar] = botMessages[botMsgIndex % botMessages.length];
+                addChatMessage(name, text, avatar);
+                botMsgIndex++;
+            }
+            setTimeout(simulateBotChat, 8000 + Math.random() * 15000);
+        }
+
+        // ============================================================
+        //  BOOT
+        // ============================================================
+        async function boot() {
+            await loadAllAssets();
+            initGame();
+            loadingScreen.style.display = 'none';
+            gamePhase = 'playing';
+            playSoundLoop('background');
+
+            // Init side panel
+            renderLeaderboard();
+            initChat();
+            setTimeout(simulateBotChat, 10000);
+
+            requestAnimationFrame(gameLoop);
+        }
+        boot();
+    </script>
+</body>
+
+</html>
