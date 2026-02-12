@@ -950,6 +950,19 @@
                 clipSprite(sheet, 40, 77, 14, 13, 28, 26),
             ];
             sprites.seal_left = sprites.seal_right.map(flipCanvas);
+            // Fruit sprites — 10 types
+            sprites.fruits = [
+                clipSprite(sheet, 8, 207, 12, 16, 20, 26),   // eggplant
+                clipSprite(sheet, 23, 207, 14, 16, 22, 26),  // carrot
+                clipSprite(sheet, 39, 208, 16, 15, 26, 24),  // cabbage
+                clipSprite(sheet, 57, 207, 10, 16, 18, 26),  // cucumber
+                clipSprite(sheet, 69, 207, 14, 16, 22, 26),  // strawberry
+                clipSprite(sheet, 85, 207, 10, 16, 18, 26),  // turnip
+                clipSprite(sheet, 97, 207, 14, 16, 22, 26),  // pumpkin
+                clipSprite(sheet, 113, 207, 11, 16, 18, 26), // celery
+                clipSprite(sheet, 126, 207, 13, 16, 22, 26), // potato
+                clipSprite(sheet, 141, 207, 12, 16, 20, 26), // mushroom
+            ];
             if (images['water_tile']) {
                 const c = document.createElement('canvas'); c.width = BRICK_W; c.height = BRICK_W;
                 const cx = c.getContext('2d'); cx.imageSmoothingEnabled = false;
@@ -1147,7 +1160,32 @@
             }
         }
 
-        function generateFloor(floorNum, bricks, floorEdges, cloudPlatforms, seals) {
+        // ---- Collectible Fruit ----
+        const FRUIT_W = 22, FRUIT_H = 26;
+
+        class Fruit {
+            constructor(x, y, type) {
+                this.x = x;
+                this.y = y - FRUIT_H;
+                this.type = type; // 0-9 index into sprites.fruits
+                this.alive = true;
+                this.bobTimer = Math.random() * Math.PI * 2; // start at random phase
+            }
+            getRect() { return { x: this.x, y: this.y, w: FRUIT_W, h: FRUIT_H }; }
+            update() {
+                this.bobTimer += 0.05;
+            }
+            draw(camY) {
+                if (!this.alive) return;
+                const bobY = Math.sin(this.bobTimer) * 2;
+                const sy = this.y - camY + bobY;
+                if (sy < -FRUIT_H || sy > SCREEN_H + FRUIT_H) return;
+                const spr = sprites.fruits[this.type];
+                if (spr) ctx.drawImage(spr, Math.floor(this.x), Math.floor(sy));
+            }
+        }
+
+        function generateFloor(floorNum, bricks, floorEdges, cloudPlatforms, seals, fruits) {
             const floorTopY = getFloorY(floorNum);
             const diff = getDifficulty(floorNum);
             const leftEdge = diff.minEdge + Math.floor(Math.random() * (diff.maxEdge - diff.minEdge + 1));
@@ -1189,16 +1227,29 @@
             const leftLimit = leftEdge * BRICK_W;
             const rightLimit = SCREEN_W - rightEdge * BRICK_W;
             const pattern = segmentPatterns[(floorNum - 1) % segmentPatterns.length];
+            const bricksOnThisFloor = [];
             for (const [startX, count] of pattern) {
                 if (Math.random() < diff.gapChance) continue;
                 for (let i = 0; i < count; i++) {
                     const bx = startX + i * BRICK_W;
                     if (bx >= leftLimit && bx + BRICK_W <= rightLimit) {
                         const isUnbreakable = Math.random() < diff.unbreakableChance;
-                        bricks.push(new Brick(bx, floorTopY, !isUnbreakable, false, season));
+                        const brick = new Brick(bx, floorTopY, !isUnbreakable, false, season);
+                        bricks.push(brick);
+                        bricksOnThisFloor.push(brick);
                         if (Math.random() < 0.5)
                             bricks.push(new Brick(bx, floorTopY + BRICK_H, true, true, season));
                     }
+                }
+            }
+
+            // Spawn fruits on random bricks (floors >= 2)
+            if (fruits && floorNum >= 2 && bricksOnThisFloor.length > 0) {
+                const fruitCount = Math.random() < 0.4 ? 1 : (Math.random() < 0.3 ? 2 : 0);
+                for (let i = 0; i < fruitCount; i++) {
+                    const brick = bricksOnThisFloor[Math.floor(Math.random() * bricksOnThisFloor.length)];
+                    const type = Math.floor(Math.random() * 10);
+                    fruits.push(new Fruit(brick.x - 2, brick.y, type));
                 }
             }
         }
@@ -1212,6 +1263,7 @@
             const floorEdges = {};
             const cloudPlatforms = [];
             const seals = [];
+            const fruits = [];
             const floor1Y = getFloorY(1);
             const season1 = getFloorSeason(1);
             floorEdges[1] = [0, 0];
@@ -1220,14 +1272,14 @@
             const floor2Y = getFloorY(2);
             const midY = Math.floor((floor1Y + floor2Y) / 2);
             for (let i = 0; i < 7; i++) bricks.push(new Brick(i * BRICK_W, midY, true, false, season1));
-            for (let f = 2; f <= INITIAL_FLOORS; f++) generateFloor(f, bricks, floorEdges, cloudPlatforms, seals);
+            for (let f = 2; f <= INITIAL_FLOORS; f++) generateFloor(f, bricks, floorEdges, cloudPlatforms, seals, fruits);
             highestGeneratedFloor = INITIAL_FLOORS; lowestAliveFloor = 1;
-            return { bricks, floorEdges, cloudPlatforms, seals };
+            return { bricks, floorEdges, cloudPlatforms, seals, fruits };
         }
 
-        function expandFloorsIfNeeded(playerFloor, bricks, floorEdges, cloudPlatforms, seals) {
+        function expandFloorsIfNeeded(playerFloor, bricks, floorEdges, cloudPlatforms, seals, fruits) {
             const target = playerFloor + 8;
-            while (highestGeneratedFloor < target) { highestGeneratedFloor++; generateFloor(highestGeneratedFloor, bricks, floorEdges, cloudPlatforms, seals); }
+            while (highestGeneratedFloor < target) { highestGeneratedFloor++; generateFloor(highestGeneratedFloor, bricks, floorEdges, cloudPlatforms, seals, fruits); }
         }
 
         function cleanupOldBricks(camY) {
@@ -1236,6 +1288,7 @@
             fallingBricks = fallingBricks.filter(fb => fb.y < cutoff);
             cloudPlatforms = cloudPlatforms.filter(cp => cp.y < cutoff);
             seals = seals.filter(s => s.y < cutoff);
+            fruits = fruits.filter(f => f.y < cutoff);
         }
 
         // ============================================================
@@ -1453,7 +1506,7 @@
         // ============================================================
         //  GAME STATE
         // ============================================================
-        let player, camera, bricks, fallingBricks, floorEdges, cloudPlatforms, seals;
+        let player, camera, bricks, fallingBricks, floorEdges, cloudPlatforms, seals, fruits;
         let keys = {};
         let gamePhase = 'loading';
         let score = 0, currentFloor = 0, bricksBroken = 0;
@@ -1464,6 +1517,7 @@
             bricks = result.bricks; floorEdges = result.floorEdges;
             cloudPlatforms = result.cloudPlatforms;
             seals = result.seals;
+            fruits = result.fruits;
             fallingBricks = [];
             score = 0; currentFloor = 0; bricksBroken = 0;
             const startY = getFloorY(1) - PLAYER_H + FOOT_OFFSET;
@@ -1499,6 +1553,7 @@
             for (const brick of bricks) brick.draw(camY);
             for (const cp of cloudPlatforms) cp.draw(camY);
             for (const seal of seals) seal.draw(camY);
+            for (const fruit of fruits) fruit.draw(camY);
             drawSchool(camY);
             drawFloorLabels(camY, floorEdges);
             for (const fb of fallingBricks) fb.draw(camY);
@@ -1556,9 +1611,23 @@
                     }
                 }
                 seals = seals.filter(s => s.alive);
+                // Update fruits & check player collection
+                for (const fruit of fruits) {
+                    if (!fruit.alive) continue;
+                    fruit.update();
+                    if (rectsCollide(
+                        { x: player.x + 2, y: player.y, w: PLAYER_W - 4, h: PLAYER_H },
+                        fruit.getRect()
+                    )) {
+                        fruit.alive = false;
+                        score += 100;
+                        playSound('break_brick');
+                    }
+                }
+                fruits = fruits.filter(f => f.alive);
                 player.update(bricks, fallingBricks, camera.y, cloudPlatforms);
                 camera.update(player);
-                expandFloorsIfNeeded(camera.baseFloor + 5, bricks, floorEdges, cloudPlatforms, seals);
+                expandFloorsIfNeeded(camera.baseFloor + 5, bricks, floorEdges, cloudPlatforms, seals, fruits);
                 cleanupOldBricks(camera.y);
                 for (const fb of fallingBricks) fb.update();
                 fallingBricks = fallingBricks.filter(fb => fb.alive);
