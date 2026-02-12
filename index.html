@@ -556,6 +556,190 @@
         .chat-send-btn:hover {
             background: linear-gradient(135deg, #2080f0 0%, #1a6dd4 100%);
         }
+
+        /* ---- Mobile controls (hidden on PC) ---- */
+        .mobile-controls {
+            display: none;
+        }
+
+        /* ---- Tab buttons in panel (hidden on PC) ---- */
+        .tab-buttons {
+            display: none;
+        }
+
+        /* ===========================================================
+           MOBILE RESPONSIVE — only affects screens ≤ 768px
+           =========================================================== */
+        @media (max-width: 768px) {
+            body {
+                justify-content: flex-start;
+                overflow: auto;
+            }
+
+            .main-container {
+                flex-direction: column;
+                width: 100vw;
+                align-items: center;
+            }
+
+            /* ---- Side panel moves to TOP as compact tabs ---- */
+            .side-panel {
+                order: -1;
+                width: 100vw;
+                height: auto;
+                max-height: 35vh;
+                border-radius: 0;
+                border: none;
+                border-bottom: 2px solid #333;
+            }
+
+            .panel-header {
+                padding: 6px 10px;
+            }
+
+            .panel-header .panel-title {
+                font-size: 8px;
+            }
+
+            .tab-buttons {
+                display: flex;
+                border-bottom: 2px solid #333;
+                flex-shrink: 0;
+            }
+
+            .tab-btn {
+                flex: 1;
+                padding: 8px 0;
+                background: #111;
+                color: #666;
+                border: none;
+                font-family: 'Press Start 2P', monospace;
+                font-size: 8px;
+                cursor: pointer;
+                transition: all 0.2s;
+                border-bottom: 2px solid transparent;
+            }
+
+            .tab-btn.active {
+                color: #4cf;
+                background: #1a1a2e;
+                border-bottom-color: #4cf;
+            }
+
+            .leaderboard {
+                max-height: none;
+            }
+
+            .tab-content {
+                display: none;
+            }
+
+            .tab-content.active {
+                display: flex;
+                flex-direction: column;
+                max-height: 25vh;
+                overflow-y: auto;
+            }
+
+            .chat-section.tab-content.active {
+                flex: 1;
+            }
+
+            /* ---- Game area: full width ---- */
+            .game-wrapper {
+                width: 100vw;
+                border-radius: 0;
+                border-left: none;
+                border-right: none;
+            }
+
+            canvas {
+                width: 100vw;
+                height: auto;
+            }
+
+            .scanlines {
+                border-radius: 0;
+            }
+
+            .hud-bar .hud-item {
+                font-size: 8px;
+            }
+
+            /* ---- Hide keyboard hint on mobile ---- */
+            .bottom-hud {
+                display: none;
+            }
+
+            /* ---- Game Over: tap to restart ---- */
+            .go-restart-mobile {
+                display: block;
+            }
+
+            .go-restart-pc {
+                display: none;
+            }
+
+            /* ---- Mobile controls ---- */
+            .mobile-controls {
+                display: flex;
+                width: 100vw;
+                padding: 12px 16px;
+                justify-content: space-between;
+                align-items: center;
+                background: linear-gradient(180deg, #0d1117 0%, #0a0a1a 100%);
+                border-top: 2px solid #333;
+                flex-shrink: 0;
+                gap: 12px;
+                -webkit-user-select: none;
+                user-select: none;
+                touch-action: none;
+            }
+
+            .ctrl-group {
+                display: flex;
+                gap: 10px;
+            }
+
+            .ctrl-btn {
+                width: 64px;
+                height: 64px;
+                border-radius: 50%;
+                border: 2px solid #444;
+                background: linear-gradient(145deg, #1a1a2e, #111);
+                color: #6cf;
+                font-size: 22px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                cursor: pointer;
+                -webkit-tap-highlight-color: transparent;
+                transition: transform 0.1s, border-color 0.1s;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), inset 0 1px 1px rgba(255, 255, 255, 0.05);
+            }
+
+            .ctrl-btn:active,
+            .ctrl-btn.pressed {
+                transform: scale(0.9);
+                border-color: #6cf;
+                background: linear-gradient(145deg, #16213e, #1a1a2e);
+                box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4), inset 0 0 8px rgba(100, 200, 255, 0.1);
+            }
+
+            .ctrl-btn-jump {
+                width: 80px;
+                height: 80px;
+                font-size: 26px;
+                border-color: #f66;
+                color: #f66;
+            }
+
+            .ctrl-btn-jump:active,
+            .ctrl-btn-jump.pressed {
+                border-color: #ff8;
+                color: #ff8;
+            }
+        }
     </style>
 </head>
 
@@ -584,7 +768,8 @@
                     BRICKS: <span class="val" id="goBricks">0</span><br>
                     BEST: <span class="best" id="goBest">0</span>
                 </div>
-                <div class="go-restart">NHẤN ENTER ĐỂ CHƠI LẠI</div>
+                <div class="go-restart go-restart-pc">NHẤN ENTER ĐỂ CHƠI LẠI</div>
+                <div class="go-restart go-restart-mobile" style="display:none">NHẤN ĐỂ CHƠI LẠI</div>
             </div>
         </div>
 
@@ -598,14 +783,20 @@
                 <span class="online-count" id="onlineCount">1 online</span>
             </div>
 
+            <!-- Tab buttons (visible on mobile only) -->
+            <div class="tab-buttons">
+                <button class="tab-btn active" data-tab="leaderboard">🏆 RANK</button>
+                <button class="tab-btn" data-tab="chat">💬 CHAT</button>
+            </div>
+
             <!-- Leaderboard -->
-            <div class="leaderboard">
+            <div class="leaderboard tab-content active" id="tabLeaderboard">
                 <div class="lb-title">🏆 BẢNG XẾP HẠNG</div>
                 <div class="lb-list" id="lbList"></div>
             </div>
 
             <!-- Chat -->
-            <div class="chat-section">
+            <div class="chat-section tab-content" id="tabChat">
                 <div class="chat-title">💬 CHAT NHÓM</div>
                 <div class="chat-messages" id="chatMessages"></div>
                 <div class="chat-input-area">
@@ -619,6 +810,15 @@
 
     <div class="bottom-hud">
         <span>←→</span> Move &nbsp; <span>X/Space</span> Jump &nbsp; ENDLESS MODE
+    </div>
+
+    <!-- Mobile virtual controls -->
+    <div class="mobile-controls">
+        <div class="ctrl-group">
+            <button class="ctrl-btn" id="btnLeft">◀</button>
+            <button class="ctrl-btn" id="btnRight">▶</button>
+        </div>
+        <button class="ctrl-btn ctrl-btn-jump" id="btnJump">▲</button>
     </div>
 
     <script>
@@ -1281,6 +1481,67 @@
             }
         });
         document.addEventListener('keyup', (e) => { keys[e.code] = false; });
+
+        // ---- Mobile touch controls ----
+        const isMobile = /Android|iPhone|iPad|iPod|webOS/i.test(navigator.userAgent) || window.innerWidth <= 768;
+
+        function setupMobileControls() {
+            const btnLeft = document.getElementById('btnLeft');
+            const btnRight = document.getElementById('btnRight');
+            const btnJump = document.getElementById('btnJump');
+
+            function bindTouch(btn, keyCode, onPress) {
+                const start = (e) => {
+                    e.preventDefault();
+                    keys[keyCode] = true;
+                    btn.classList.add('pressed');
+                    if (onPress) onPress();
+                };
+                const end = (e) => {
+                    e.preventDefault();
+                    keys[keyCode] = false;
+                    btn.classList.remove('pressed');
+                };
+                btn.addEventListener('touchstart', start, { passive: false });
+                btn.addEventListener('touchend', end, { passive: false });
+                btn.addEventListener('touchcancel', end, { passive: false });
+            }
+
+            bindTouch(btnLeft, 'ArrowLeft');
+            bindTouch(btnRight, 'ArrowRight');
+            bindTouch(btnJump, 'Space', () => {
+                if (gamePhase === 'playing') player.jump();
+                else if (gamePhase === 'gameover') restartGame();
+            });
+
+            // Tap game over screen to restart on mobile
+            const goScreen = document.getElementById('gameOverScreen');
+            goScreen.addEventListener('touchstart', (e) => {
+                if (gamePhase === 'gameover') {
+                    e.preventDefault();
+                    restartGame();
+                }
+            });
+        }
+
+        // ---- Tab switching ----
+        function setupTabs() {
+            const tabBtns = document.querySelectorAll('.tab-btn');
+            const tabContents = document.querySelectorAll('.tab-content');
+            tabBtns.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const target = btn.dataset.tab;
+                    tabBtns.forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    tabContents.forEach(tc => tc.classList.remove('active'));
+                    if (target === 'leaderboard') document.getElementById('tabLeaderboard').classList.add('active');
+                    else document.getElementById('tabChat').classList.add('active');
+                });
+            });
+        }
+
+        setupTabs();
+        if (isMobile) setupMobileControls();
 
         // ============================================================
         //  SIDE PANEL: LEADERBOARD + CHAT
