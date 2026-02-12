@@ -943,6 +943,13 @@
             // Cloud sprites
             sprites.cloud_small = clipSprite(sheet, 125, 177, 6, 7, 12, 14);
             sprites.cloud_big = clipSprite(sheet, 132, 177, 7, 7, 14, 14);
+            // Seal (Topi) sprites — 3 walking frames
+            sprites.seal_right = [
+                clipSprite(sheet, 6, 76, 15, 14, 28, 26),
+                clipSprite(sheet, 23, 76, 15, 14, 28, 26),
+                clipSprite(sheet, 40, 77, 14, 13, 28, 26),
+            ];
+            sprites.seal_left = sprites.seal_right.map(flipCanvas);
             if (images['water_tile']) {
                 const c = document.createElement('canvas'); c.width = BRICK_W; c.height = BRICK_W;
                 const cx = c.getContext('2d'); cx.imageSmoothingEnabled = false;
@@ -1084,7 +1091,63 @@
             }
         }
 
-        function generateFloor(floorNum, bricks, floorEdges, cloudPlatforms) {
+        // ---- Seal (Topi) Enemy ----
+        const SEAL_W = 28, SEAL_H = 26, SEAL_SPEED = 0.6;
+
+        class Seal {
+            constructor(x, y, direction) {
+                this.x = x;
+                this.y = y - SEAL_H;
+                this.vy = 0;
+                this.onGround = false;
+                this.direction = direction; // 1=right, -1=left
+                this.frame = 0;
+                this.timer = 0;
+                this.alive = true;
+            }
+            getRect() { return { x: this.x, y: this.y, w: SEAL_W, h: SEAL_H }; }
+            update(bricksArr) {
+                // Horizontal movement
+                this.x += SEAL_SPEED * this.direction;
+                // Wrap around screen edges
+                if (this.x > SCREEN_W) this.x = -SEAL_W;
+                if (this.x + SEAL_W < 0) this.x = SCREEN_W;
+                // Gravity
+                this.vy += GRAVITY;
+                this.y += this.vy;
+                // Check brick collisions (land on bricks)
+                this.onGround = false;
+                const feetRect = { x: this.x + 4, y: this.y + SEAL_H - 4, w: SEAL_W - 8, h: 4 };
+                for (const brick of bricksArr) {
+                    if (!brick.alive) continue;
+                    const br = brick.getRect();
+                    if (this.vy >= 0 && rectsCollide(feetRect, br)) {
+                        if (this.y + SEAL_H - this.vy <= br.y + 6) {
+                            this.y = br.y - SEAL_H;
+                            this.vy = 0;
+                            this.onGround = true;
+                            break;
+                        }
+                    }
+                }
+                // Die if fallen too far off screen
+                if (this.y > 5000) this.alive = false;
+                // Animate walk cycle
+                this.timer++;
+                if (this.timer >= 8) { this.timer = 0; this.frame = (this.frame + 1) % 3; }
+            }
+            draw(camY) {
+                if (!this.alive) return;
+                const sy = this.y - camY;
+                if (sy < -SEAL_H || sy > SCREEN_H + SEAL_H) return;
+                const spr = this.direction > 0
+                    ? sprites.seal_left[this.frame]
+                    : sprites.seal_right[this.frame];
+                if (spr) ctx.drawImage(spr, Math.floor(this.x), Math.floor(sy));
+            }
+        }
+
+        function generateFloor(floorNum, bricks, floorEdges, cloudPlatforms, seals) {
             const floorTopY = getFloorY(floorNum);
             const diff = getDifficulty(floorNum);
             const leftEdge = diff.minEdge + Math.floor(Math.random() * (diff.maxEdge - diff.minEdge + 1));
@@ -1113,6 +1176,16 @@
                 return; // no bricks on cloud floors
             }
 
+            // Seal enemy spawn (floors >= 3)
+            if (seals && floorNum >= 3) {
+                const sealChance = Math.min(0.3 + floorNum * 0.01, 0.6);
+                if (Math.random() < sealChance) {
+                    const dir = Math.random() < 0.5 ? 1 : -1;
+                    const sx = dir > 0 ? 0 : SCREEN_W - SEAL_W;
+                    seals.push(new Seal(sx, floorTopY, dir));
+                }
+            }
+
             const leftLimit = leftEdge * BRICK_W;
             const rightLimit = SCREEN_W - rightEdge * BRICK_W;
             const pattern = segmentPatterns[(floorNum - 1) % segmentPatterns.length];
@@ -1138,6 +1211,7 @@
             const bricks = [];
             const floorEdges = {};
             const cloudPlatforms = [];
+            const seals = [];
             const floor1Y = getFloorY(1);
             const season1 = getFloorSeason(1);
             floorEdges[1] = [0, 0];
@@ -1146,14 +1220,14 @@
             const floor2Y = getFloorY(2);
             const midY = Math.floor((floor1Y + floor2Y) / 2);
             for (let i = 0; i < 7; i++) bricks.push(new Brick(i * BRICK_W, midY, true, false, season1));
-            for (let f = 2; f <= INITIAL_FLOORS; f++) generateFloor(f, bricks, floorEdges, cloudPlatforms);
+            for (let f = 2; f <= INITIAL_FLOORS; f++) generateFloor(f, bricks, floorEdges, cloudPlatforms, seals);
             highestGeneratedFloor = INITIAL_FLOORS; lowestAliveFloor = 1;
-            return { bricks, floorEdges, cloudPlatforms };
+            return { bricks, floorEdges, cloudPlatforms, seals };
         }
 
-        function expandFloorsIfNeeded(playerFloor, bricks, floorEdges, cloudPlatforms) {
+        function expandFloorsIfNeeded(playerFloor, bricks, floorEdges, cloudPlatforms, seals) {
             const target = playerFloor + 8;
-            while (highestGeneratedFloor < target) { highestGeneratedFloor++; generateFloor(highestGeneratedFloor, bricks, floorEdges, cloudPlatforms); }
+            while (highestGeneratedFloor < target) { highestGeneratedFloor++; generateFloor(highestGeneratedFloor, bricks, floorEdges, cloudPlatforms, seals); }
         }
 
         function cleanupOldBricks(camY) {
@@ -1161,6 +1235,7 @@
             bricks = bricks.filter(b => b.y < cutoff);
             fallingBricks = fallingBricks.filter(fb => fb.y < cutoff);
             cloudPlatforms = cloudPlatforms.filter(cp => cp.y < cutoff);
+            seals = seals.filter(s => s.y < cutoff);
         }
 
         // ============================================================
@@ -1378,7 +1453,7 @@
         // ============================================================
         //  GAME STATE
         // ============================================================
-        let player, camera, bricks, fallingBricks, floorEdges, cloudPlatforms;
+        let player, camera, bricks, fallingBricks, floorEdges, cloudPlatforms, seals;
         let keys = {};
         let gamePhase = 'loading';
         let score = 0, currentFloor = 0, bricksBroken = 0;
@@ -1388,6 +1463,7 @@
             const result = createInitialPlatforms();
             bricks = result.bricks; floorEdges = result.floorEdges;
             cloudPlatforms = result.cloudPlatforms;
+            seals = result.seals;
             fallingBricks = [];
             score = 0; currentFloor = 0; bricksBroken = 0;
             const startY = getFloorY(1) - PLAYER_H + FOOT_OFFSET;
@@ -1422,6 +1498,7 @@
             drawSideWalls(camY, floorEdges);
             for (const brick of bricks) brick.draw(camY);
             for (const cp of cloudPlatforms) cp.draw(camY);
+            for (const seal of seals) seal.draw(camY);
             drawSchool(camY);
             drawFloorLabels(camY, floorEdges);
             for (const fb of fallingBricks) fb.draw(camY);
@@ -1456,9 +1533,32 @@
                 if (!moving) { player.walk_frame = 0; player.walk_timer = 0; }
 
                 for (const cp of cloudPlatforms) cp.update();
+                // Update seals & check player-seal collision
+                for (const seal of seals) {
+                    if (!seal.alive) continue;
+                    seal.update(bricks);
+                    if (!player.dead && rectsCollide(
+                        { x: player.x + 2, y: player.y, w: PLAYER_W - 4, h: PLAYER_H },
+                        seal.getRect()
+                    )) {
+                        const playerBottom = player.y + PLAYER_H;
+                        const sealTop = seal.y;
+                        // Stomp from above: player falling & feet above seal midpoint
+                        if (player.vy > 0 && playerBottom - sealTop < SEAL_H * 0.5) {
+                            seal.alive = false;
+                            player.vy = JUMP_FORCE * 0.6; // bounce
+                            score += 50;
+                            playSound('break_brick');
+                        } else {
+                            // Side collision — player dies
+                            player.dead = true;
+                        }
+                    }
+                }
+                seals = seals.filter(s => s.alive);
                 player.update(bricks, fallingBricks, camera.y, cloudPlatforms);
                 camera.update(player);
-                expandFloorsIfNeeded(camera.baseFloor + 5, bricks, floorEdges, cloudPlatforms);
+                expandFloorsIfNeeded(camera.baseFloor + 5, bricks, floorEdges, cloudPlatforms, seals);
                 cleanupOldBricks(camera.y);
                 for (const fb of fallingBricks) fb.update();
                 fallingBricks = fallingBricks.filter(fb => fb.alive);
